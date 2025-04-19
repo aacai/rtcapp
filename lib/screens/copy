@@ -1,0 +1,226 @@
+import 'package:flutter/material.dart';
+import 'package:logger/logger.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/livekit_providers.dart';
+
+class HomeScreen extends ConsumerStatefulWidget {
+  final Function(String, String) onJoinRoom;
+
+  const HomeScreen({super.key, required this.onJoinRoom});
+
+  @override
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends ConsumerState<HomeScreen> {
+  // 使用Riverpod提供的Logger
+  Logger get _logger => ref.read(loggerProvider);
+  final _urlController =
+      TextEditingController(text: 'ws://192.168.198.82:7880');
+
+  @override
+  void initState() {
+    super.initState();
+  }
+
+  final _tokenController = TextEditingController(
+      text:
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NDY5NDc0NDIsImlzcyI6ImRldmtleSIsIm5hbWUiOiJ0ZXN0X3VzZXIiLCJuYmYiOjE3NDQzNTU0NDIsInN1YiI6InRlc3RfdXNlciIsInZpZGVvIjp7InJvb20iOiJ0ZXN0X3Jvb20iLCJyb29tSm9pbiI6dHJ1ZX19.j2RNEhuMfixM9uIfzC5g6xwDcB6ajgEPSrznZuiwe4o");
+  bool _obscureKey = true;
+
+  @override
+  void dispose() {
+    _urlController.dispose();
+    _tokenController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('视频会议'),
+        centerTitle: true,
+      ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 600),
+          child: SingleChildScrollView(
+            padding: EdgeInsets.symmetric(
+              horizontal: isSmallScreen ? 24 : 48,
+              vertical: 24,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildHeader(theme),
+                const SizedBox(height: 40),
+                _buildUrlField(theme),
+                const SizedBox(height: 16),
+                _buildKeyField(theme),
+                const SizedBox(height: 32),
+                _buildJoinButton(theme),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader(ThemeData theme) {
+    return Column(
+      children: [
+        Icon(
+          Icons.video_camera_front_rounded,
+          size: 72,
+          color: theme.colorScheme.primary,
+        ),
+        const SizedBox(height: 24),
+        Text(
+          'LiveKit视频会议',
+          style: theme.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          '安全、稳定的实时视频通信解决方案',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurface.withOpacity(0.7),
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildUrlField(ThemeData theme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '服务器地址',
+          style: theme.textTheme.labelLarge?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _urlController,
+          keyboardType: TextInputType.url,
+          decoration: InputDecoration(
+            hintText: 'ws://your.livekit.server',
+            prefixIcon: Icon(
+              Icons.link,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            filled: true,
+            fillColor: theme.colorScheme.surfaceVariant.withOpacity(0.5),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildKeyField(ThemeData theme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '访问令牌',
+          style: theme.textTheme.labelLarge?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _tokenController,
+          obscureText: _obscureKey,
+          decoration: InputDecoration(
+            hintText: '输入访问密钥',
+            prefixIcon: Icon(
+              Icons.key,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            suffixIcon: IconButton(
+              icon: Icon(
+                _obscureKey ? Icons.visibility_off : Icons.visibility,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              onPressed: () => setState(() => _obscureKey = !_obscureKey),
+            ),
+            filled: true,
+            fillColor: theme.colorScheme.surfaceVariant.withOpacity(0.5),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildJoinButton(ThemeData theme) {
+    // 使用Consumer监听房间状态
+    return Consumer(
+      builder: (context, ref, child) {
+        final roomState = ref.watch(roomProvider);
+        final isConnecting = roomState.isConnecting;
+
+        return SizedBox(
+          width: double.infinity,
+          child: FilledButton(
+            onPressed: isConnecting ? null : _joinRoom,
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: isConnecting
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text(
+                    '加入会议',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                  ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _joinRoom() async {
+    // 使用Riverpod获取房间状态
+    final roomState = ref.read(roomProvider);
+    if (roomState.isConnecting) return;
+
+    await Permission.camera.request();
+    await Permission.microphone.request();
+    _logger.i('Join room with URL: ${_urlController.text.trim()}, ');
+
+    try {
+      await widget.onJoinRoom(
+        _urlController.text.trim(),
+        _tokenController.text.trim(),
+      );
+    } catch (e) {
+      _logger.e(
+          '加入会议室失败,${_urlController.text.trim()},,,${_tokenController.text.trim()}',
+          e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('连接失败: ${e.toString()}'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+}
