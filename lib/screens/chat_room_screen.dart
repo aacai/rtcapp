@@ -335,7 +335,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     }
 
     const timeoutDuration = Duration(minutes: 30);
-    const chunkSize = 64 * 1024; // 64KB
 
     // 更新UI状态为传输中
     setState(() {
@@ -1287,24 +1286,49 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.black,
+      backgroundColor: Colors.transparent,
       builder: (context) {
-        return SizedBox(
-          height: MediaQuery.of(context).size.height * 0.7,
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.8,
+          decoration: BoxDecoration(
+            color: Colors.black,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
           child: Column(
             children: [
+              // 顶部把手指示器
+              Container(
+                margin: const EdgeInsets.only(top: 10),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
               Padding(
-                padding: const EdgeInsets.all(8.0),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text(
                       '视频通话',
                       style: TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.bold),
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white),
+                      icon: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.close,
+                            color: Colors.white, size: 20),
+                      ),
                       onPressed: () => Navigator.pop(context),
                     ),
                   ],
@@ -1314,21 +1338,34 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                 child: _buildVideoGrid(),
               ),
               Padding(
-                padding: const EdgeInsets.all(16.0),
+                padding: const EdgeInsets.symmetric(
+                    vertical: 20.0, horizontal: 16.0),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     _buildActionButton(
                       _isStreaming ? Icons.videocam_off : Icons.videocam,
                       _isStreaming ? '关闭视频' : '加入视频',
+                      color: _isStreaming ? Colors.red : Colors.blue,
                       onTap: () {
                         _toggleCamera();
                         Navigator.pop(context);
                       },
                     ),
                     _buildActionButton(
+                      _isFrontCamera
+                          ? Icons.flip_camera_android
+                          : Icons.flip_camera_ios,
+                      '切换摄像头',
+                      color: Colors.green,
+                      onTap: () {
+                        _toggleCameraFacing();
+                      },
+                    ),
+                    _buildActionButton(
                       Icons.mic,
                       '加入语音',
+                      color: Colors.amber,
                       onTap: () {
                         // 加入语音逻辑
                         Navigator.pop(context);
@@ -1348,6 +1385,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     // 收集活跃的视频轨道和对应的参与者
     List<VideoTrack> videoTracks = [];
     List<String> participantNames = [];
+    List<bool> isLocalFlags = [];
 
     // 检查远程参与者的视频
     if (room != null) {
@@ -1358,6 +1396,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           if (track != null && track.isActive && track is VideoTrack) {
             videoTracks.add(track);
             participantNames.add(participant.name ?? '未知用户');
+            isLocalFlags.add(false);
           }
         }
       }
@@ -1370,103 +1409,231 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           if (track != null && track.isActive && track is VideoTrack) {
             videoTracks.add(track);
             participantNames.add(room!.localParticipant!.name ?? '我');
+            isLocalFlags.add(true);
           }
         }
       }
     }
 
     if (videoTracks.isEmpty) {
-      return const Center(
-        child: Text('没有可用的视频流', style: TextStyle(color: Colors.white)),
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.videocam_off,
+              color: Colors.grey[400],
+              size: 48,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '暂无视频画面',
+              style: TextStyle(color: Colors.grey[400], fontSize: 16),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '点击下方按钮开启视频',
+              style: TextStyle(color: Colors.grey[600], fontSize: 14),
+            ),
+          ],
+        ),
       );
     }
 
-    return GridView.builder(
-      padding: const EdgeInsets.all(8),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount:
-            (videoTracks.length == 1) ? 1 : (sqrt(videoTracks.length).ceil()),
-        childAspectRatio: 16 / 9,
-        mainAxisSpacing: 4,
-        crossAxisSpacing: 4,
+    // 确定网格布局
+    int crossAxisCount = 1;
+    if (videoTracks.length > 1) {
+      crossAxisCount = videoTracks.length <= 4 ? 2 : 3;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: GridView.builder(
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: crossAxisCount,
+          childAspectRatio: 3 / 4, // 更适合移动设备的竖屏比例
+          mainAxisSpacing: 12,
+          crossAxisSpacing: 12,
+        ),
+        itemCount: videoTracks.length,
+        itemBuilder: (context, index) {
+          final videoTrack = videoTracks[index];
+          final participantName = participantNames[index];
+          final isLocal = isLocalFlags[index];
+
+          return Container(
+            decoration: BoxDecoration(
+              color: Colors.grey[900],
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.3),
+                  blurRadius: 8,
+                  spreadRadius: 2,
+                )
+              ],
+              border: Border.all(
+                color:
+                    isLocal ? Colors.blue.withOpacity(0.6) : Colors.transparent,
+                width: 2,
+              ),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  // 视频背景
+                  Container(color: Colors.black),
+
+                  // 视频画面
+                  VideoTrackRenderer(
+                    videoTrack,
+                    fit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                  ),
+
+                  // 底部渐变蒙版
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    height: 70,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            Colors.black.withOpacity(0.7),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // 参与者名称和指示器
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Row(
+                        children: [
+                          // 名称标签
+                          Expanded(
+                            child: Text(
+                              participantName + (isLocal ? ' (我)' : ''),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                shadows: [
+                                  Shadow(
+                                      color: Colors.black,
+                                      blurRadius: 4,
+                                      offset: Offset(0, 1))
+                                ],
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+
+                          // 状态指示器
+                          Container(
+                            width: 10,
+                            height: 10,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.green,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.green.withOpacity(0.5),
+                                  blurRadius: 4,
+                                  spreadRadius: 1,
+                                )
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  // 右上角本地/远程指示
+                  if (isLocal)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withOpacity(0.7),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Text(
+                          '我的画面',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
-      itemCount: videoTracks.length,
-      itemBuilder: (context, index) {
-        final videoTrack = videoTracks[index];
-        final participantName = participantNames[index];
-
-        return Container(
-          decoration: BoxDecoration(
-            color: Colors.grey[800],
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // 使用LiveKit的VideoTrackRenderer渲染视频
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: VideoTrackRenderer(
-                  videoTrack,
-                  fit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-                ),
-              ),
-
-              // 参与者名称标签
-              Positioned(
-                left: 8,
-                bottom: 8,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.7),
-                    borderRadius: BorderRadius.circular(8),
-                    boxShadow: [
-                      BoxShadow(
-                          color: Colors.black.withOpacity(0.3),
-                          blurRadius: 4,
-                          spreadRadius: 2)
-                    ],
-                  ),
-                  child: Text(
-                    participantName,
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        shadows: [Shadow(color: Colors.black, blurRadius: 2)]),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 
   Widget _buildActionButton(IconData icon, String label,
-      {required VoidCallback onTap}) {
+      {required VoidCallback onTap, required Color color}) {
     return GestureDetector(
       onTap: onTap,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 50,
-            height: 50,
-            decoration: const BoxDecoration(
-              color: Colors.blue,
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.9),
               shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: color.withOpacity(0.3),
+                  blurRadius: 8,
+                  spreadRadius: 2,
+                )
+              ],
             ),
-            child: Icon(icon, color: Colors.white),
+            child: Icon(icon, color: Colors.white, size: 24),
           ),
-          const SizedBox(height: 4),
-          Text(label,
-              style: const TextStyle(color: Colors.white, fontSize: 12)),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
         ],
       ),
     );
+  }
+
+  @override
+  void deactivate() {
+    ref.read(roomProvider.notifier).dispose();
+    ref.read(chatRoomStateProvider.notifier).dispose();
+    super.deactivate();
   }
 
   @override

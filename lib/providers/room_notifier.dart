@@ -9,7 +9,7 @@ class RoomNotifier extends StateNotifier<Room?> {
   RoomNotifier() : super(null);
 
   Future<Result<Room>> connectToRoom(String url, String token) async {
-    final room = Room(roomOptions: RoomOptions(adaptiveStream: true));
+    final room = Room(roomOptions: const RoomOptions(adaptiveStream: true));
     try {
       await room.prepareConnection(url, token);
       await room.connect(url, token);
@@ -22,9 +22,10 @@ class RoomNotifier extends StateNotifier<Room?> {
   }
 
   void _destroy() {
+    LogUtils.v("room notifier destroy");
     state?.apply((room) {
-      LogUtils.v("room notifier destroy");
       room.localParticipant?.apply((participant) async {
+        LogUtils.v("room notifier destroy called");
         participant.trackPublications.forEach((name, publication) {
           publication.track?.stop();
         });
